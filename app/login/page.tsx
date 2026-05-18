@@ -79,19 +79,18 @@ export default async function LoginPage({
           </div>
         ) : null}
 
-        <button
-          type="button"
+        <a
+          href="/api/auth/sso"
           className="btn btn-lg"
           style={{
             width: "100%", background: "#ffffff", color: "#333", border: "1px solid #ccc",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-            marginBottom: 16, fontSize: 14, fontWeight: 600,
+            marginBottom: 16, fontSize: 14, fontWeight: 600, textDecoration: "none",
           }}
-          onClick={() => { if (typeof window !== "undefined") window.location.href = "/api/auth/sso"; }}
         >
           <svg width="20" height="20" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
           Sign in with Microsoft
-        </button>
+        </a>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 16px" }}>
           <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
