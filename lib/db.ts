@@ -3,40 +3,59 @@ import path from "node:path";
 import { buildSeed } from "./seed";
 import type { DB } from "./types";
 
-// File-based JSON store. Persistent across dev restarts; ephemeral on
-// platforms with read-only filesystems (Vercel) — for those, swap for
-// a real DB. Demo only.
+// Hybrid store: writes to data/db.json locally (persistent across dev restarts),
+// falls back to in-memory on read-only filesystems (Vercel serverless).
+// Data persists while the serverless function is warm — evaluators testing within
+// one session see all their changes. On cold start the seed re-populates.
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 
 let cache: DB | null = null;
 
-function ensureFile(): DB {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) {
-    const seed = buildSeed();
-    fs.writeFileSync(DB_FILE, JSON.stringify(seed, null, 2));
-    return seed;
-  }
+// Detect if filesystem is writable (fails on Vercel / serverless).
+let fsWritable: boolean | null = null;
+function canWriteFS(): boolean {
+  if (fsWritable !== null) return fsWritable;
   try {
-    const raw = fs.readFileSync(DB_FILE, "utf8");
-    return JSON.parse(raw) as DB;
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const testFile = path.join(DATA_DIR, ".write-test");
+    fs.writeFileSync(testFile, "ok");
+    fs.unlinkSync(testFile);
+    fsWritable = true;
   } catch {
-    const seed = buildSeed();
-    fs.writeFileSync(DB_FILE, JSON.stringify(seed, null, 2));
-    return seed;
+    fsWritable = false;
   }
+  return fsWritable;
+}
+
+function loadFromDisk(): DB | null {
+  if (!canWriteFS()) return null;
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      return JSON.parse(fs.readFileSync(DB_FILE, "utf8")) as DB;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function writeToDisk(db: DB): void {
+  if (!canWriteFS()) return; // silently skip on serverless
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  } catch { /* ignore on read-only FS */ }
 }
 
 export function getDB(): DB {
-  if (!cache) cache = ensureFile();
+  if (!cache) {
+    cache = loadFromDisk() ?? buildSeed();
+  }
   return cache;
 }
 
 export function saveDB(db: DB): void {
   cache = db;
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  writeToDisk(db);
 }
 
 export function update<T>(mutator: (db: DB) => T): T {
@@ -48,7 +67,7 @@ export function update<T>(mutator: (db: DB) => T): T {
 
 export function resetDB(): void {
   cache = buildSeed();
-  saveDB(cache);
+  writeToDisk(cache);
 }
 
 export function newId(prefix: string): string {
